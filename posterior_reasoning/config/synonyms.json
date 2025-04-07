@@ -1,0 +1,12 @@
+{
+    "count": "count", "cnt": "count", "size": "count", "number": "count", "num": "count", "length": "count", "len": "count",
+    "buffer": "buffer", "buf": "buffer", "stream": "buffer",
+    "c": "char", "ch": "char", "char": "char", "character": "char",
+    "string": "str", "str": "str",
+    "fd": "file", "file": "file", "filedesc": "file",
+    "e": "error", "error": "error", "err": "error",
+    "position": "pos", "pos": "pos",
+    "value": "val", "val": "val",
+    "tmp": "temp", "temp": "temp",
+    "idx": "index", "index": "index"
+}
