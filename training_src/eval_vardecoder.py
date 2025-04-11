@@ -259,7 +259,7 @@ def eval(fpath, verbose=True):
             cluster_counter.eval(vars_gt, vars_pred, gt_var_order, struct_vars+array_vars)
 
 
-    print("================= Result =================")
+    print("================= VarDecoder Eval Result =================")
     print("mismatch", num_mismatch)
     print("ALL stack variables:")
     all_counter.print()

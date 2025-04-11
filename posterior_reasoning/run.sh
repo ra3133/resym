@@ -4,6 +4,11 @@
 test_flag=""
 clean_flag=""
 
+# Parse flags and positional arguments
+result_folder=$1
+shift  # Shift to parse remaining arguments
+
+
 for arg in "$@"; do
     if [[ "$arg" == "--test" ]]; then
         test_flag="--test"
@@ -56,7 +61,7 @@ remove_folder_if_exists() {
 }
 
 # ---------- Directories ----------
-result_folder="/home/posterior_results"
+# result_folder="/home/posterior_results"
 data_root="/home/data"
 
 prep_folder="$result_folder/prep"
@@ -72,7 +77,7 @@ result_json="$result_folder/results.json"
 
 # ---------- Step execution ----------
 create_and_clean_dir "$prep_folder"
-python prep.py /home/results/vardecoder_pred.jsonl /home/results/fielddecoder_pred.jsonl  "$data_root" "$prep_folder" ${test_flag:+--test}
+python prep.py /home/results/training_data/vardecoder_pred.jsonl /home/results/training_data/fielddecoder_pred.jsonl  "$data_root" "$prep_folder" ${test_flag:+--test}
 
 create_and_clean_dir "$equiv_vars_folder"
 python callgraph.py "$prep_folder" "$equiv_vars_folder" ${test_flag:+--test}

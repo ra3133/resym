@@ -186,7 +186,7 @@ def align(var_file, subprogram_file, fname, is_main: bool):
 
 def main(var_dir, subprogram_dir, code_dir, align_save_dir, stack_data_save_dir, target_bin, ignore_complex):
 
-
+    # metadata = read_json(metadata_fpath)
     var_files = get_file_list(var_dir)
     error_cnt = 0
     success_cnt = 0
@@ -200,8 +200,13 @@ def main(var_dir, subprogram_dir, code_dir, align_save_dir, stack_data_save_dir,
             continue
 
         fname = f.replace('.json', '')
-        proj_name, fun_addr = fname.split('-')
-        var_fname = proj_name + '-' + fun_addr.upper()  + '_var.json'
+        binname, fun_id = fname.split('-')
+        var_fname = binname + '-' + fun_id.upper()  + '_var.json'
+
+        # proj = find_proj(metadata, binname)
+        # if proj is None:
+        #     print(f"Error: cannot find project for binary {binname} in the metadata")
+        #     continue
 
         try:
 
@@ -223,8 +228,9 @@ def main(var_dir, subprogram_dir, code_dir, align_save_dir, stack_data_save_dir,
             error_cnt += 1
             continue
 
+    
         try:
-            align_data = align_stack(align_data, proj_name, fun_addr.upper(), code_dir, align_save_dir)
+            align_data = align_stack(align_data, binname, fun_id.upper(), code_dir, align_save_dir)
         except FileAlignException as e:
             print(f'Error: {var_fname} - {e.msg}')
             error_cnt += 1
@@ -235,9 +241,9 @@ def main(var_dir, subprogram_dir, code_dir, align_save_dir, stack_data_save_dir,
             continue
 
         # generate training data
-        train_data_generated = gen_vardecoder_data(fname, align_data, stack_data_save_dir, ignore_complex=ignore_complex)
-        train_data_cnt += 1
+        train_data_generated = gen_vardecoder_data(fname, align_data, binname, fun_id, stack_data_save_dir, ignore_complex=ignore_complex)
 
+        train_data_cnt += 1
         success_cnt += 1
 
     print(f'Success: {success_cnt}, Training data generated: {train_data_cnt}, Fail: {error_cnt}')
@@ -254,6 +260,7 @@ if __name__=='__main__':
     parser.add_argument('subprogram_dir', help = 'the folder (.../debuginfo_subprograms)of the subprograms extracted from dwarf (debug info)')
     parser.add_argument('code_dir')
     parser.add_argument('align_save_dir')
+    # parser.add_argument('metadata_fpath')
     parser.add_argument('stack_data_save_dir')
     
     parser.add_argument('--bin', required=False, default=None)

@@ -35,7 +35,7 @@ class CallGraph():
         else:
             return self.node2idx[name]
 
-    def add_edge(self, fun1, var1, fun2, var2, proj_data=None):
+    def add_edge(self, fun1, var1, fun2, var2, bin_data=None):
         idx1 = self.add_node(fun1, var1)
         idx2 = self.add_node(fun2, var2)
 
@@ -48,7 +48,7 @@ class CallGraph():
         else:
             self.represent[rep1] = rep2
 
-    def connected_componenet(self, proj_data, valid_only:bool, test_mode:bool) -> Dict[str,List[str]]:
+    def connected_componenet(self, bin_data, valid_only:bool, test_mode:bool) -> Dict[str,List[str]]:
         # valid_only: if set to True, discard the connected components that are all from the same function
         components = defaultdict(set)
         for node_idx, node in enumerate(self.nodes):
@@ -68,9 +68,9 @@ class CallGraph():
                 for funvar in conn:
                     fun, var = funvar.split('---')
                     # remove nodes with no ground truth
-                    if fun not in proj_data:
+                    if fun not in bin_data:
                         continue
-                    if test_mode or var_aligned(proj_data[fun], var):
+                    if test_mode or var_aligned(bin_data[fun], var):
                         valid_conn.append(funvar)
                 # remove clusters from only one function
                 conn_funs = [funvar.split('---')[0] for funvar in valid_conn]
@@ -96,13 +96,13 @@ def var_aligned(fundata, var) -> bool:
     return False
 
 # TODO: pass as `(__int64)v13`
-def process_proj(projname, proj_data, test_mode)->CallGraph:
+def process_bin(binname, bin_data, test_mode)->CallGraph:
     def is_var_ida_arr(fun, var) -> bool:
-        if fun in proj_data and var in proj_data[fun]['ida_type']:
+        if fun in bin_data and var in bin_data[fun]['ida_type']:
             # print('found')
-            return proj_data[fun]['ida_type'][var][1]
+            return bin_data[fun]['ida_type'][var][1]
         else:
-            print(f"[{projname}] cannot find ida type for {fun} -- {var}")
+            print(f"[{binname}] cannot find ida type for {fun} -- {var}")
             return False
         
         
@@ -121,11 +121,11 @@ def process_proj(projname, proj_data, test_mode)->CallGraph:
     def _beyond_access_in_callstack(fun, var, level:int) -> bool:
         # TODO consider data flow
         # return True if the variable var has beyond access in `level` levels of callstack
-        if fun not in proj_data:
+        if fun not in bin_data:
             return False
-        fundata = proj_data[fun]
-        if 'heap' in proj_data:
-            for expr, exprdata in proj_data['heap']['parsed'].items():
+        fundata = bin_data[fun]
+        if 'heap' in bin_data:
+            for expr, exprdata in bin_data['heap']['parsed'].items():
                 if exprdata['varName'] == var:
                     return True
 
@@ -147,25 +147,25 @@ def process_proj(projname, proj_data, test_mode)->CallGraph:
 
         return False
 
-    def _add_edge_helper(fun1, var1, fun2, var2, proj_data=None):
+    def _add_edge_helper(fun1, var1, fun2, var2, bin_data=None):
         if var1 in invalid_direct_pass_vars:
             return
         if CHECK_CALL_STACK:
             if '&' not in var1 and not _beyond_access_in_callstack(fun2, var2, level=LEVEL):
                 # if it is a direct pass and do not has beyond access in `LEVEL` levels of callstack
                 return
-        callgraph.add_edge(fun1, var1, fun2, var2, proj_data)
+        callgraph.add_edge(fun1, var1, fun2, var2, bin_data)
 
     callgraph = CallGraph()
     all_heap_vars = set()
     skip_fun = set()
 
     if CHECK_NUM_CALLER:
-        for fun, fundata in proj_data.items():
+        for fun, fundata in bin_data.items():
             if len(fundata['caller']) >= NUM_CALLER_THRESHOLD:
                 skip_fun.add(fun) 
 
-    for fun, fundata in proj_data.items():
+    for fun, fundata in bin_data.items():
         if fun in skip_fun:
             continue
 
@@ -190,7 +190,7 @@ def process_proj(projname, proj_data, test_mode)->CallGraph:
                         var,
                         fun, 
                         equiv_var,
-                        proj_data,
+                        bin_data,
                     )
 
         
@@ -215,7 +215,7 @@ def process_proj(projname, proj_data, test_mode)->CallGraph:
                             var_expr,
                             callee_fun, 
                             f"a{i+1}",
-                            proj_data
+                            bin_data
                             )
                         continue
 
@@ -234,7 +234,7 @@ def process_proj(projname, proj_data, test_mode)->CallGraph:
                             var_expr, 
                             callee_fun, 
                             f"a{i+1}",
-                            proj_data
+                            bin_data
                             )
                         continue
                 # (__int64)v4 
@@ -250,7 +250,7 @@ def process_proj(projname, proj_data, test_mode)->CallGraph:
                             var_expr, 
                             callee_fun, 
                             f"a{i+1}",
-                            proj_data
+                            bin_data
                             )
                 
                 match = re.match(r'^\(.*?\)&([a-zA-Z0-9_]+)$', param)
@@ -258,14 +258,14 @@ def process_proj(projname, proj_data, test_mode)->CallGraph:
                     v = match.group(1)
                     if v in fundata['argument'] or v in fundata['variable']:
                         var_expr = _var_consider_type(fun, v, True)
-                        # print(projname, fun, v)
+                        # print(binname, fun, v)
                         _add_edge_helper(
                             fun, 
                             # v,
                             var_expr, 
                             callee_fun, 
                             f"a{i+1}",
-                            proj_data
+                            bin_data
                             )
 
     # for idx, num_caller in callgraph.nodes_num_caller.items():
@@ -277,20 +277,20 @@ def process_proj(projname, proj_data, test_mode)->CallGraph:
 
 def main(prep_aggregation_dir, save_dir, test_mode):
     init_folder(save_dir)
-    callgraphs:Dict[str: CallGraph] = {}   # projname -> CallGraph
+    callgraphs:Dict[str: CallGraph] = {}   # binname -> CallGraph
     
-    for projfile in tqdm(get_file_list(prep_aggregation_dir)):
-        if not projfile.endswith('.json'):
+    for binfile in tqdm(get_file_list(prep_aggregation_dir)):
+        if not binfile.endswith('.json'):
             continue
-        proj_data = read_json(os.path.join(prep_aggregation_dir, projfile))
-        projname = projfile.split('.')[0]
+        bin_data = read_json(os.path.join(prep_aggregation_dir, binfile))
+        binname = binfile.split('.')[0]
 
         # first iter, get skip_fun
-        tmp_callgraph = process_proj(projname, proj_data, test_mode)
-        callgraphs[projname] = tmp_callgraph
-        conn_comp = callgraphs[projname].connected_componenet(proj_data, valid_only=True, test_mode=test_mode)
+        tmp_callgraph = process_bin(binname, bin_data, test_mode)
+        callgraphs[binname] = tmp_callgraph
+        conn_comp = callgraphs[binname].connected_componenet(bin_data, valid_only=True, test_mode=test_mode)
         
-        dump_json(os.path.join(save_dir, projfile), conn_comp)
+        dump_json(os.path.join(save_dir, binfile), conn_comp)
         
 
 if __name__=='__main__':

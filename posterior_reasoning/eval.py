@@ -87,9 +87,12 @@ def eval(fpath):
     data = read_json(fpath)
 
     for key, value in tqdm(data.items()):
-        pred_type = normalize_type(value['pred']['type'])
-        gt_type = normalize_type(value['gt']['type'])
-
+        try:
+            pred_type = normalize_type(value['pred']['type'])
+            gt_type = normalize_type(value['gt']['type'])
+        except:
+            print(f"Failed to get the prediction results or ground truth of {key}, skip.")
+            continue
 
         # offset : size
         pred_offsets = {}  

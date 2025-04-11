@@ -9,41 +9,44 @@ import os
 hf_key = os.environ['HF_TOKEN']
 
 
-
 def count_dataset_samples(file_path):
     count = 0
     with open(file_path, 'r') as file:
-        for line in file:
+        for _ in file:
             count += 1
     return count
 
-def train(train_fpath, save_dir):
+
+def train(train_fpath, save_dir, model_name, max_token, lr, epochs, batch_size, max_steps):
     kwargs = DistributedDataParallelKwargs(static_graph=True, find_unused_parameters=True)
     accelerator = Accelerator(kwargs_handlers=[kwargs])
 
-    tokenizer = AutoTokenizer.from_pretrained('bigcode/starcoderbase-3b', use_auth_token=hf_key)
+    print(f'==========start loading model {model_name} ==========')
+    tokenizer = AutoTokenizer.from_pretrained(model_name, use_auth_token=hf_key)
     model = AutoModelForCausalLM.from_pretrained(
-        'bigcode/starcoderbase-3b', use_auth_token=hf_key, torch_dtype=torch.bfloat16
+        model_name, use_auth_token=hf_key, torch_dtype=torch.float16
     )
-    model.transformer.gradient_checkpointing = True
+    model.train()
+    # model.transformer.gradient_checkpointing = True
+    model.config.use_cache = False
 
-    train_dataset = Dataset(train_fpath, tokenizer, max_len=4096, shuffle=True)
+    max_token = min(max_token, tokenizer.model_max_length)
+
+    train_dataset = Dataset(train_fpath, tokenizer, max_len=max_token, shuffle=True)
 
     dataset_size = count_dataset_samples(train_fpath)
-    num_devices = 4
-    per_device_train_batch_size = 4
-    total_steps_per_epoch = dataset_size / (per_device_train_batch_size * num_devices)  
-    num_save_step = round(0.20 * total_steps_per_epoch)
+    num_devices = torch.cuda.device_count()
+    print(f"[INFO] Using {num_devices} GPU(s)")
 
+    total_steps_per_epoch = dataset_size / (batch_size * num_devices)
+    num_save_step = max(1, round(0.20 * total_steps_per_epoch))
 
-
-    trainer_args = TrainingArguments(
+    trainer_kwargs = dict(
         output_dir=save_dir,
-        per_device_train_batch_size=per_device_train_batch_size,
-        learning_rate=5e-5,
+        per_device_train_batch_size=batch_size,
+        learning_rate=lr,
         lr_scheduler_type='cosine',
         warmup_steps=500,
-        num_train_epochs=1,
         gradient_accumulation_steps=1,
         gradient_checkpointing=True,
         optim='adamw_torch',
@@ -53,19 +56,46 @@ def train(train_fpath, save_dir):
         logging_strategy='steps',
         logging_steps=10,
         prediction_loss_only=True,
-        bf16=True
+        fp16=True,
     )
+
+    # Conditionally add either max_steps or num_train_epochs
+    if max_steps > 0:
+        trainer_kwargs["max_steps"] = max_steps
+    else:
+        trainer_kwargs["num_train_epochs"] = epochs
+
+    trainer_args = TrainingArguments(**trainer_kwargs)
+
     trainer = Trainer(
-        model=model, args=trainer_args, train_dataset=train_dataset,
+        model=model,
+        args=trainer_args,
+        train_dataset=train_dataset,
     )
 
     trainer.train()
 
 
-if __name__=='__main__':
+if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('train_fpath')
     parser.add_argument('save_dir')
+    parser.add_argument('--model_name', type=str, default='bigcode/starcoderbase-3b')
+    parser.add_argument('--max_token', type=int, default=4096, help='Maximum total context length (input + output)')
+    parser.add_argument('--lr', type=float, default=5e-5, help='Learning rate')
+    parser.add_argument('--epoch', type=int, default=1, help='Number of training epochs')
+    parser.add_argument('--batch_size', type=int, default=4, help='Per-device training batch size')
+    parser.add_argument('--max_steps', type=int, default=-1, help='Max total training steps (overrides epoch if > 0)')
+
     args = parser.parse_args()
 
-    train(args.train_fpath, args.save_dir)
+    train(
+        train_fpath=args.train_fpath,
+        save_dir=args.save_dir,
+        model_name=args.model_name,
+        max_token=args.max_token,
+        lr=args.lr,
+        epochs=args.epoch,
+        batch_size=args.batch_size,
+        max_steps=args.max_steps
+    )

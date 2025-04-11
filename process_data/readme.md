@@ -22,6 +22,7 @@ This repository provides code to generate training labels for **VarDecoder** (la
    - `bin`: Contains **non-stripped binaries** with debug information. (Note that `bin` folder is not required for test mode, see below for more details.)
    - `decompiled`: Contains decompiled code from **fully stripped binaries**.
   
+
    To use our sample data:
    ```
    docker run -it --rm --memory=100G --name resym \

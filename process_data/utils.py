@@ -61,3 +61,10 @@ def read_json(path):
 def dump_json(path, data):
     with open(path, "w") as f:
         json.dump(data, f, indent=4)
+
+
+def find_proj(metadata, binname):
+    for proj, bins in metadata.items():
+        if binname in bins:
+            return proj
+    return None

@@ -40,12 +40,15 @@ def process_align_heap_data(align_heap_data):
         ground_truth.append(curr)
     return ground_truth
 
-def gen_data_point(align_heap_data):
+def gen_data_point(align_heap_data, binname, fun_id):
     code = align_heap_data['code']
     
     ground_truth = process_align_heap_data(align_heap_data['aligned'])
 
-    prompt = gen_prompt(code, [v[0] for v in ground_truth])
+    expressions = [v[0] for v in ground_truth]
+    if len(expressions) == 0:
+        return None
+    prompt, first_token = gen_prompt(code, expressions)
 
     output = []
     for expr, varname, vartype, fname, ftype in ground_truth:
@@ -58,20 +61,26 @@ def gen_data_point(align_heap_data):
         'prompt': prompt,
         'output': output,
         'label': ground_truth,
-        'funname': align_heap_data['funname']
+        'funname': align_heap_data['funname'],
+        'first_token': first_token,
+        'bin': binname,
+        'fun_id': fun_id,
+        # 'proj': proj
     }
     
 def gen_prompt (code:str, expressions:List[str]):
     prompt = 'What are the variable name and type for the following memory accesses: '
     prompt += ', '.join([e for e in expressions]) + '?\n'
     prompt += f'```\n{code.strip()}\n```' 
-    return prompt
+    prompt += f'{expressions[0]}:'
+    return prompt, expressions[0]
 
 
-def gen_fielddecoder_data(fname, align_heap_data, save_dir):
+def gen_fielddecoder_data(fname, align_heap_data, binname, fun_id, save_dir):
         
     save_fpath = os.path.join(save_dir, fname + '.json')
 
-    save_data = gen_data_point (align_heap_data)
-    
-    dump_json(save_fpath, save_data)
+    save_data = gen_data_point (align_heap_data, binname, fun_id)
+
+    if save_data is not None:
+        dump_json(save_fpath, save_data)

@@ -166,7 +166,7 @@ def main(align_folder, filed_access_folder, align_data_save_dir, train_data_save
     fail_cnt = 0
     unavailable = 0
    
-
+    # metadata = read_json(metadata_fpath)
     for f in tqdm(get_file_list(align_folder), disable=target_bin):
         if not f.endswith('.json'):
             continue
@@ -175,11 +175,19 @@ def main(align_folder, filed_access_folder, align_data_save_dir, train_data_save
             continue
 
         fname = f.replace('.json', '')
+        binname, fun_id = f.replace('.json', '').split('-')
+
+        # proj = find_proj(metadata, binname)
+        # if proj is None:
+        #     print(f"Error: cannot find project for binary {binname} in the metadata")
+        #     continue
+        
+
         try:
             align_data = read_json(os.path.join(align_folder, f))
             save_data = {
                 'funname': align_data['funname'],
-                'code': align_data['code']
+                'code': align_data['code'],
             }
             if not os.path.exists(os.path.join(filed_access_folder, f)):
                 unavailable += 1
@@ -205,7 +213,7 @@ def main(align_folder, filed_access_folder, align_data_save_dir, train_data_save
             continue
         
         dump_json(os.path.join(align_data_save_dir, f), save_data)
-        gen_fielddecoder_data(fname, save_data, train_data_save_dir)
+        gen_fielddecoder_data(fname, save_data, binname, fun_id, train_data_save_dir)
     print(f'Success: {success_cnt}, Fail: {fail_cnt}, Unavailable: {unavailable}')
 
 
@@ -214,6 +222,7 @@ if __name__=='__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('align_dir')
     parser.add_argument('filed_access_folder')
+    # parser.add_argument('metadata_fpath')
     parser.add_argument('align_data_save_dir')
     parser.add_argument('train_data_save_dir')
     parser.add_argument('--bin', required=False, default=None)

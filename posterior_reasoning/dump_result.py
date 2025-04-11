@@ -74,7 +74,11 @@ class Results():
                     }
             
             if not test_mode:
-                assert key in self.gt, key + "is missing"
+                # assert key in self.gt, "Ground truth of "+ key + "is missing"
+                if key not in self.gt:
+                    print("Ground truth of "+ key + "is missing")
+                    # del save[key]
+                    continue
                 save[key]['gt'] = {'type': self.gt[key]['annotation']['structname'], 'offsets': {}}
                 save[key] = {
                     'pred': {'type': self.pred[key]['annotation']['structname'], 'offsets': {}}, 
@@ -199,8 +203,6 @@ def eval(prep_folder, eval_folder, data_root_folder, out_fpath, test_mode:bool, 
                 pred = fundata['stack']['inference'].get(head_gt, ['-', '-'])
                 our_results.update_pred_field(key, 0, pred[0], pred[1])
 
-
-
         # update name evaluator
         for head_gt in cluster_gt:
             key = f'{filename}**{fun}**{head_gt}'
@@ -247,6 +249,7 @@ def eval(prep_folder, eval_folder, data_root_folder, out_fpath, test_mode:bool, 
                 'name': fundata['heap']['inference'][expr][2],
                 'type': fundata['heap']['inference'][expr][3],
                 }
+            
 
         # ------- 2. for each var, get gt and compare ---------
         for var in heap_pred_offsets:
@@ -266,10 +269,8 @@ def eval(prep_folder, eval_folder, data_root_folder, out_fpath, test_mode:bool, 
                 pred_type = heap_pred_offsets[var][offset]['type']
                 our_results.update_pred_field(key, offset, pred_name, pred_type)
 
-
-
-
             if not test_mode:
+                
                 bin, fun_id = _get_fun_id(fundata)
                 align_fpath = get_process_file_path(data_root_folder, "align", bin, fun_id)
                 if not os.path.exists(align_fpath):

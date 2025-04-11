@@ -138,6 +138,8 @@ def process_dataflow(dataflow_fpath: str) -> Dict[str, Set]:
 
 def get_arg_var_info(binname, fun_id) -> (List, List):
     decompiled_vars_fpath = get_process_file_path(root_data_folder, "decompiled_vars", binname, fun_id)
+    if decompiled_vars_fpath is None: 
+        return None, None
     decompiled_vars_data = read_json(decompiled_vars_fpath)
     args = [a['name'] for a in decompiled_vars_data['argument']]
     vars = [v['name'] for v in decompiled_vars_data['variable']]
@@ -159,14 +161,14 @@ def get_ida_size_helper(binname, fun_id, varnames, ida_type_config) -> Dict[str,
         ret[var] = ida_size
     return ret
 
-def merge_stack_heap_inference(stack_fpath, heap_fpath, stack_fun_by_proj, heap_fun_by_proj, test_mode:bool):
+def merge_stack_heap_inference(stack_fpath, heap_fpath, stack_fun_by_bin, heap_fun_by_bin, test_mode:bool):
     ida_type_config = read_json('./config/ida_types.json')
     save_data = {}
     # iter 1, stack inference, init all "proj" and "fun" info
     with open(stack_fpath, 'r') as fp:
         fp_lines = fp.readlines()
-        for proj, indices in tqdm(stack_fun_by_proj.items(), desc='iterate stack'):
-            save_data[proj] = {}
+        for bin, indices in tqdm(stack_fun_by_bin.items(), desc='iterate stack'):
+            save_data[bin] = {}
             for i in indices:
                 line = json.loads(fp_lines[i])
                 if test_mode:
@@ -178,7 +180,9 @@ def merge_stack_heap_inference(stack_fpath, heap_fpath, stack_fun_by_proj, heap_
                 dataflow_fpath = get_process_file_path(root_data_folder, "dataflow", line['bin'], line['fun_id'])
                 dataflow_data = process_dataflow(dataflow_fpath)
                 args, vars = get_arg_var_info(line['bin'], line['fun_id'])
-                save_data[proj]["sub_"+line['fun_id']] = {
+                if args is None:
+                    continue
+                save_data[bin]["sub_"+line['fun_id']] = {
                     'stack': {
                         'index': i,
                         'inference': vars_pred, 
@@ -198,9 +202,9 @@ def merge_stack_heap_inference(stack_fpath, heap_fpath, stack_fun_by_proj, heap_
     # iter 2, heap inference, merge info into stack info
     with open(heap_fpath, 'r') as fp:
         fp_lines = fp.readlines()
-        for proj, indices in tqdm(heap_fun_by_proj.items(),desc='iterate heap'):
-            if proj not in save_data:
-                save_data[proj] = {}
+        for bin, indices in tqdm(heap_fun_by_bin.items(),desc='iterate heap'):
+            if bin not in save_data:
+                save_data[bin] = {}
 
             for i in indices:
                 line = json.loads(fp_lines[i])
@@ -227,17 +231,19 @@ def merge_stack_heap_inference(stack_fpath, heap_fpath, stack_fun_by_proj, heap_
                         'varName':access['varName'],
                         'exprPointeeSize': access['exprPointeeSize']
                         }
-                if "sub_"+line['fun_id'] not in save_data[proj]:
+                if "sub_"+line['fun_id'] not in save_data[bin]:
                     args, vars = get_arg_var_info(line['bin'], line['fun_id'])
+                    if args is None:
+                        continue
                     dataflow_fpath = get_process_file_path(root_data_folder, "dataflow", line['bin'], line['fun_id'])
                     dataflow_data = process_dataflow(dataflow_fpath)
-                    save_data[proj]["sub_"+line['fun_id']] = {
+                    save_data[bin]["sub_"+line['fun_id']] = {
                         'caller': [], 
                         'callee': [], 
                         'dataflow': dataflow_data, 
                         'argument': args, 
                         'variable': vars}
-                save_data[proj]["sub_"+line['fun_id']]['heap'] = {
+                save_data[bin]["sub_"+line['fun_id']]['heap'] = {
                     'index': i,
                     'inference': vars_pred, 
                     'ground_truth': vars_gt, 
@@ -246,8 +252,8 @@ def merge_stack_heap_inference(stack_fpath, heap_fpath, stack_fun_by_proj, heap_
                     'fun_id': line['fun_id']
                     }
     
-    for proj, projdata in tqdm(save_data.items(), desc='get relevant info'):
-        for fun, fundata in projdata.items():
+    for bin, bindata in tqdm(save_data.items(), desc='get relevant info'):
+        for fun, fundata in bindata.items():
             all_vars = set()
             fpath = ''
             if 'stack' in fundata:
@@ -261,21 +267,21 @@ def merge_stack_heap_inference(stack_fpath, heap_fpath, stack_fun_by_proj, heap_
             all_vars.update(fundata['variable'])
             all_vars.update(fundata['argument'])
 
-            save_data[proj][fun]['ida_type'] = get_ida_type_helper(binname, fun_id, all_vars)
-            save_data[proj][fun]['ida_size'] = get_ida_size_helper(binname, fun_id, all_vars, ida_type_config)
+            save_data[bin][fun]['ida_type'] = get_ida_type_helper(binname, fun_id, all_vars)
+            save_data[bin][fun]['ida_size'] = get_ida_size_helper(binname, fun_id, all_vars, ida_type_config)
     return save_data
                
 def main(stack_fpath, heap_fpath, tmp_root_data_folder, save_dir, test_mode):
     
-    def _get_fun_by_proj(fpath):
+    def _get_fun_by_bin(fpath):
         
-        fun_by_proj:Dict[str:List[int]] = defaultdict(list)
+        fun_by_bin:Dict[str:List[int]] = defaultdict(list)
         selected_bin = set()
         skipped_bin = set()
         with open(fpath, 'r') as fp:
             for i, line in enumerate(fp.readlines()):
                 line = json.loads(line)
-                author, proj = line['proj'].split('/')
+                # author, proj = line['proj'].split('/')
                 binname = line['bin'] 
                 if not os.path.exists(os.path.join(root_data_folder, 'bin', binname)):
                     skipped_bin.add(binname)
@@ -285,23 +291,24 @@ def main(stack_fpath, heap_fpath, tmp_root_data_folder, save_dir, test_mode):
                 selected_bin.add(binname)
                 funid = line['fun_id']
                 sep = '**'
-                key = f'{author}{sep}{proj}{sep}{binname}'
-                fun_by_proj[key].append(i)
+                # key = f'{author}{sep}{proj}{sep}{binname}'
+                key = f'{binname}'
+                fun_by_bin[key].append(i)
 
-        return fun_by_proj, selected_bin, skipped_bin
+        return fun_by_bin, selected_bin, skipped_bin
 
     global root_data_folder
     root_data_folder = tmp_root_data_folder
 
     init_folder(save_dir)
-    stack_fun_by_proj, selected_bin, skipped_bin = _get_fun_by_proj(stack_fpath)
-    heap_fun_by_proj, _, _ = _get_fun_by_proj(heap_fpath)
+    stack_fun_by_bin, selected_bin, skipped_bin = _get_fun_by_bin(stack_fpath)
+    heap_fun_by_bin, _, _ = _get_fun_by_bin(heap_fpath)
     print(f"Selected {len(selected_bin)} bins. ")
     print(f"Skipped {len(skipped_bin)} bins because they are not in {os.path.join(root_data_folder, 'bin')}")
-    merged_data = merge_stack_heap_inference(stack_fpath, heap_fpath, stack_fun_by_proj, heap_fun_by_proj, test_mode)
+    merged_data = merge_stack_heap_inference(stack_fpath, heap_fpath, stack_fun_by_bin, heap_fun_by_bin, test_mode)
     merged_data_with_calls = collect_calls(merged_data)
-    for proj in merged_data_with_calls:
-        dump_json(os.path.join(save_dir, proj.replace('/', '-')+".json"), merged_data_with_calls[proj])
+    for bin in merged_data_with_calls:
+        dump_json(os.path.join(save_dir, bin+".json"), merged_data_with_calls[bin])
 
 
 

@@ -74,6 +74,14 @@ create_dir() {
     fi
 }
 
+check_file_exists() {
+    target_file=$1
+
+    if [ ! -f "$target_file" ]; then
+        echo "Required file '$target_file' does not exist." >&2
+        exit 1
+    fi
+}
 
 create_and_clean_dir() {
     target_dir=$1
@@ -104,8 +112,10 @@ remove_folder_if_exists() {
 
 bin_dir="$source_dir/bin"
 decompiled_dir="$source_dir/decompiled"
+# meta_data_fpath="$source_dir/metadata.json"
 check_dir_exist $bin_dir
 check_dir_exist $decompiled_dir
+# check_file_exists $meta_data_fpath
 
 decompiled_files_dir="$source_dir/decompiled_files/"
 decompiled_vars_dir="$source_dir/decompiled_vars"
@@ -170,9 +180,9 @@ process_file() {
         python gen_command.py "$decompiled_files_dir" "$source_dir" --bin "$binname" ${reason_flag:+--reason} >> "$commands_dir/${binname}_command.sh"
         bash "$commands_dir/$binname"_command.sh >> "$logs_dir/clang_errors" 2>&1
 
-        python align_field.py $align_var $field_access_dir $align_field $train_field --bin $binname >> $logs_dir/align_field_errors
+        python align_field.py $align_var $field_access_dir $align_field  $train_field --bin $binname >> $logs_dir/align_field_errors
     else
-        python init_align.py $decompiled_vars_dir $debuginfo_subprograms_dir $decompiled_files_dir $align_var $train_var --bin $binname --ignore_complex >> "$source_dir/logs/align_errors"
+        python init_align.py $decompiled_vars_dir $debuginfo_subprograms_dir $decompiled_files_dir $align_var  $train_var --bin $binname --ignore_complex >> "$source_dir/logs/align_errors"
     fi
 
     echo "$binname" >> "$donefiles"

@@ -11,6 +11,10 @@ def get_ground_truth(data_root, bin, fun_id, var, pred_ptr, ida_type_config):
 
     ground_truth_data = {}
     align_fpath = get_process_file_path(data_root, "align", bin, fun_id)
+    
+    if not align_fpath:
+        print("Alignment file is missing: ", align_fpath)
+        return None, None
     stack_layout, heap_layout, is_gt_ptr, _, gt_type = get_gt_layout(align_fpath, var.strip('&'), ida_type_config, consider_arr = True)
 
     if not pred_ptr:
@@ -172,23 +176,23 @@ def main(equiv_vars_dir, prep_dir, data_root,  save_dir, test_mode):
     ida_type_config = read_json('./config/ida_types.json')
     type_config = read_json('./config/base_types.json')
     # for each project
-    for proj_equiv_var_fname in tqdm(get_file_list(equiv_vars_dir)):
-        projname = proj_equiv_var_fname.replace('.json',  '')
-        print(f"---------------------{projname}---------------------")
+    for bin_equiv_var_fname in tqdm(get_file_list(equiv_vars_dir)):
+        binname = bin_equiv_var_fname.replace('.json',  '')
+        print(f"---------------------{binname}---------------------")
         
         try:
-            proj_prep_data = read_json(os.path.join(prep_dir, proj_equiv_var_fname))
-            proj_equiv_vars = read_json(os.path.join(equiv_vars_dir, proj_equiv_var_fname))
+            bin_prep_data = read_json(os.path.join(prep_dir, bin_equiv_var_fname))
+            bin_equiv_vars = read_json(os.path.join(equiv_vars_dir, bin_equiv_var_fname))
         except:
             print(f"Prep and equiv vars file not found, Skip.")
             continue
-        if not proj_equiv_vars:  # empty list
+        if not bin_equiv_vars:  # empty list
             continue 
-        # print(os.path.join(save_dir, projname))
-        init_folder(os.path.join(save_dir, projname))
+        # print(os.path.join(save_dir, binname))
+        init_folder(os.path.join(save_dir, binname))
     
         # for each groups of equivalent variables
-        for represent, equiv_var_list in proj_equiv_vars.items():
+        for represent, equiv_var_list in bin_equiv_vars.items():
             group_data = {}
 
             # 1. get the ground truth if not in test mode
@@ -201,26 +205,27 @@ def main(equiv_vars_dir, prep_dir, data_root,  save_dir, test_mode):
                         break
                     first_funvar = equiv_var_list[use_idx]
                     funname, var = first_funvar.split('---')
-                    if funname not in proj_prep_data:
+                    if funname not in bin_prep_data:
                         # some functions are only in callgraph (being called) but not in the training/testing set
-                        print(f"{funname} not in {os.path.join(prep_dir, proj_equiv_var_fname)}")
+                        print(f"{funname} not in {os.path.join(prep_dir, bin_equiv_var_fname)}")
                         use_idx += 1
                         continue
-                    # if var.strip('&') not in proj_prep_data[funname]['stack']['inference']:
+                    # if var.strip('&') not in bin_prep_data[funname]['stack']['inference']:
                     #     use_idx += 1
                     #     continue
 
-                    if 'stack' in proj_prep_data[funname]:
-                        bin, funid = proj_prep_data[funname]['stack']['bin'], proj_prep_data[funname]['stack']['fun_id']
+                    if 'stack' in bin_prep_data[funname]:
+                        bin, funid = bin_prep_data[funname]['stack']['bin'], bin_prep_data[funname]['stack']['fun_id']
                     else:
-                        bin, funid = proj_prep_data[funname]['heap']['bin'], proj_prep_data[funname]['heap']['fun_id']
+                        bin, funid = bin_prep_data[funname]['heap']['bin'], bin_prep_data[funname]['heap']['fun_id']
                     
                     try:
-                        pred_ptr = 'stack' not in proj_prep_data[funname] or is_pred_ptr(proj_prep_data[funname]['stack']['inference'][var.strip('&')][1])
+                        pred_ptr = 'stack' not in bin_prep_data[funname] or is_pred_ptr(bin_prep_data[funname]['stack']['inference'][var.strip('&')][1])
                     except:
                         use_idx += 1
                         continue
                     ground_truth, gt_type = get_ground_truth(data_root, bin, funid, var, pred_ptr, ida_type_config)
+                    
                     if not ground_truth:
                         # no ground truth. reason: the var has no aligned info
                         use_idx += 1
@@ -244,11 +249,11 @@ def main(equiv_vars_dir, prep_dir, data_root,  save_dir, test_mode):
             for funvar in equiv_var_list:
                 # print(funvar)
                 funaddr, var = funvar.split('---')
-                if funaddr not in proj_prep_data:
+                if funaddr not in bin_prep_data:
                     continue 
                 
                 # print(funaddr)
-                vote_data = get_vote(proj_prep_data[funaddr], var, funaddr, type_config, test_mode)
+                vote_data = get_vote(bin_prep_data[funaddr], var, funaddr, type_config, test_mode)
                 if vote_data:  # if not empty
                     group_data['votes'][funvar] = vote_data
                     num_vote += 1
@@ -258,7 +263,7 @@ def main(equiv_vars_dir, prep_dir, data_root,  save_dir, test_mode):
                 group_data['processed_layout'] = process_votes(group_data['votes'])
                 if group_data['processed_layout']:
                     # only save those have layout votes (heap votes)
-                    dump_json(os.path.join(save_dir, projname, represent+'.json'), group_data)
+                    dump_json(os.path.join(save_dir, binname, represent+'.json'), group_data)
 
             
 

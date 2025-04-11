@@ -316,27 +316,28 @@ def align_stack(align_data:Dict, binname, hex_addr, code_dir, save_dir):
     align_data['argument'] = args
     align_data['code'] = code
     align_data['variable'] = vars
-    align_data['complex_var'] = complex_var
+    align_data['cluster_var'] = complex_var
 
     dump_json(os.path.join(save_dir, fname + '.json'), align_data)
     return align_data
    
 
 def gen_prompt(code:str, vars:List[str]):
-    prompt = 'In the following decompiled C program, what are the original name, data type, data size and tag of variables ' 
+    prompt = 'In the following decompiled C program, what are the original names and data types of variables ' 
     prompt += ', '.join([f'`{v}`' for v in vars]) + '?\n'
     prompt += f'```\n{code.strip()}\n```'
-    return prompt
+    prompt += f'{vars[0]}:'
+    return prompt, vars[0]
 
 
-def gen_vardecoder_data(fname, align_stack_data, save_dir, ignore_complex=False) -> bool:
+def gen_vardecoder_data(fname, align_stack_data, binname, fun_id, save_dir, ignore_complex=False) -> bool:
     # fname: <binname>-<addr>
 
     def _process_label(fname, align_data)->(int, Dict):
         label_cnt = 0
         label = {}
         all_compelx_vars = []
-        for _, var_groups in align_data['complex_var'].items():
+        for _, var_groups in align_data['cluster_var'].items():
             for var_group in var_groups:
                 all_compelx_vars += var_group
 
@@ -358,12 +359,12 @@ def gen_vardecoder_data(fname, align_stack_data, save_dir, ignore_complex=False)
 
         code = align_data['code']
         funname = align_data['funname']
-        complex_var = align_data['complex_var']
+        cluster_var = align_data['cluster_var']
         save_data = {
             'label': label,
             'code': code,
             'funname': funname,
-            'complex_var' : complex_var
+            'cluster_var' : cluster_var
         }
 
         return label_cnt, save_data
@@ -373,7 +374,7 @@ def gen_vardecoder_data(fname, align_stack_data, save_dir, ignore_complex=False)
         vars = list(label_data['label'].keys())
         code = label_data['code']
         
-        prompt = gen_prompt(code, vars)
+        prompt, first_token = gen_prompt(code, vars)
         oracle = ''
         for var in vars:
             name, ty = label_data['label'][var]
@@ -381,7 +382,7 @@ def gen_vardecoder_data(fname, align_stack_data, save_dir, ignore_complex=False)
         oracle = oracle.strip()
         
 
-        return prompt, code,  oracle
+        return prompt, first_token, code,  oracle
 
 
     success = False
@@ -390,19 +391,27 @@ def gen_vardecoder_data(fname, align_stack_data, save_dir, ignore_complex=False)
     if label_cnt == 0:
         return success
     
-    success = True
-    prompt, code, oracle = _gen_data_point(label_data)
     
+    vars = list(label_data['label'].keys())
+    if len(vars)==0:
+        return success
+    
+    success = True
+    prompt, first_token, code, oracle = _gen_data_point(label_data)
 
     save_data = {
         'code': code, 
         'prompt': prompt,
         'output': oracle, 
         'funname': label_data['funname'], 
-        'label': label_data['label']
+        'label': label_data['label'],
+        'first_token': first_token,
+        'bin': binname,
+        'fun_id': fun_id,
+        # 'proj': proj
         }
-    if label_data['complex_var']:
-        save_data['complex_var'] = label_data['complex_var']
+    if label_data['cluster_var']:
+        save_data['cluster_var'] = label_data['cluster_var']
     dump_json(os.path.join(save_dir, fname+'.json'), save_data)
     
     return success
