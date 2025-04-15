@@ -46,6 +46,7 @@ model_folder="/home/models"
 
 train_data_folder="$result_folder/training_data"
 posterior_results_folder="$result_folder/posterior_reasoning_results"
+retrain_model_folder="$result_folder/models"
 
 mkdir -p "$train_data_folder"
 mkdir -p "$posterior_results_folder"
@@ -71,6 +72,31 @@ if [ "$clean" = true ]; then
     CLEAN_FLAG="--clean"
 fi
 
+BF16_FLAG=""
+if [ "$BF16" = true ]; then
+    BF16_FLAG="--bf16"
+fi
+
+
+# === Utility Functions ===
+
+find_latest_valid_checkpoint() {
+    local checkpoint_root=$1
+    local latest_ckpt=""
+    for ckpt in $(ls -d "$checkpoint_root"/checkpoint-* 2>/dev/null | sort -V); do
+        if [ -f "$ckpt/config.json" ] && [ -f "$ckpt/generation_config.json" ] && \
+        { [ -f "$ckpt/pytorch_model.bin" ] || [ -f "$ckpt/model.safetensors" ]; }; then
+            latest_ckpt="$ckpt"
+        fi
+    done
+
+    if [ -n "$latest_ckpt" ]; then
+        echo "$latest_ckpt"
+    else
+        echo "[WARNING] No valid checkpoint found in $checkpoint_root. Falling back to base dir." >&2
+        echo "$checkpoint_root"
+    fi
+}
 
 # === Activate Conda Env ===
 eval "$(conda shell.bash hook)"
@@ -79,7 +105,7 @@ conda activate binary
 # === Step 1: Process Data ===
 cd "$code_root/process_data" || exit 1
 echo "[INFO] Processing data..."
-bash process_data.sh "$data_root" $FIELD_FLAG $REASON_FLAG $TEST_FLAG $CLEAN_FLAG
+bash process_data.sh "$data_root" $FIELD_FLAG $REASON_FLAG $TEST_FLAG $CLEAN_FLAG --max_proc $MAX_PROC
 
 
 # === Step 2: Generate JSONL Files ===
@@ -112,57 +138,58 @@ export WANDB_MODE=disabled
 
 if [ "$TRAIN_ON" = true ]; then
     echo "[INFO] Running training mode..."
-
+    NUM_GPUS=$(echo "$VISIBLE_GPUS" | awk -F',' '{print NF}')
     # Define checkpoint paths for retraining
-    var_ckpt_dir="$model_folder/vardecoder_retrain"
-    field_ckpt_dir="$model_folder/fielddecoder_retrain"
-    
+    var_ckpt_dir="$retrain_model_folder/vardecoder"
+    field_ckpt_dir="$retrain_model_folder/fielddecoder"
     # Train VarDecoder
-    CUDA_VISIBLE_DEVICES=$VISIBLE_GPUS python vardecoder_train.py \
+    CUDA_VISIBLE_DEVICES=$VISIBLE_GPUS torchrun --nproc-per-node=$NUM_GPUS vardecoder_train.py \
         "$train_data_folder/vardecoder_train.jsonl" \
         "$var_ckpt_dir" \
-        --model_name "$model_name" \
+        --model_name "$MODEL_NAME" \
         --max_token "$vardecoder_max_token_train" \
         --lr "$LR" \
         --epoch "$EPOCH" \
         --batch_size "$BATCH_SIZE" \
-        --max_steps "$MAX_STEPS"
-
+        $BF16_FLAG \
+        --log_steps "$LOG_STEPS"
     # Update ckpt paths to newly trained ones
-    vardecoder_ckpt="$var_ckpt_dir"
+    vardecoder_ckpt=$(find_latest_valid_checkpoint "$var_ckpt_dir")
 
     if [ "$field" = true ]; then
         # Train FieldDecoder
-        CUDA_VISIBLE_DEVICES=$VISIBLE_GPUS python fielddecoder_train.py \
+        CUDA_VISIBLE_DEVICES=$VISIBLE_GPUS torchrun --nproc-per-node=$NUM_GPUS fielddecoder_train.py \
             "$train_data_folder/fielddecoder_train.jsonl" \
             "$field_ckpt_dir" \
-            --model_name "$model_name" \
+            --model_name "$MODEL_NAME" \
             --max_token "$fielddecoder_max_token_train" \
             --lr "$LR" \
             --epoch "$EPOCH" \
             --batch_size "$BATCH_SIZE" \
-            --max_steps "$MAX_STEPS"
-
-        fielddecoder_ckpt="$field_ckpt_dir"
+            $BF16_FLAG \
+            --log_steps "$LOG_STEPS"
+        fielddecoder_ckpt=$(find_latest_valid_checkpoint "$field_ckpt_dir")
     fi
 fi
 
-echo "[INFO] Running inference mode..."
+
+echo "[INFO] Running inference..."
+cd "$code_root/training_src" || exit 1
 CUDA_VISIBLE_DEVICES=$VISIBLE_GPUS python vardecoder_inf.py \
     "$train_data_folder/vardecoder_test.jsonl" \
     "$train_data_folder/vardecoder_pred.jsonl" \
     "$vardecoder_ckpt" \
-    --model_name "$model_name" \
+    --model_name "$MODEL_NAME" \
     --max_token "$vardecoder_max_token_inf" \
     --num_beams "$num_beams"
 
-
 if [ "$field" = true ]; then
+    cd "$code_root/training_src" || exit 1
     CUDA_VISIBLE_DEVICES=$VISIBLE_GPUS python fielddecoder_inf.py \
         "$train_data_folder/fielddecoder_test.jsonl" \
         "$train_data_folder/fielddecoder_pred.jsonl" \
         "$fielddecoder_ckpt" \
-        --model_name "$model_name" \
+        --model_name "$MODEL_NAME" \
         --max_token "$fielddecoder_max_token_inf" \
         --num_beams "$num_beams"
 fi

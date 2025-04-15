@@ -7,34 +7,54 @@ check_interval=1
 # Ensure at least one argument is provided (the required parameter)
 if [ -z "$1" ]; then
     echo "Error: Missing required parameter."
-    echo "Usage: $0 <required_param> [--field] [--clean] [--reason] [--test]"
+    echo "Usage: $0 <required_param> [--field] [--clean] [--reason] [--test] [--max_proc <int>]"
     exit 1
 fi
-source_dir=$1    
 
+source_dir=$1    
+shift
 
 field_flag=""
 clean_flag=""
 reason_flag=""
 test_flag=""
 
-for arg in "$@"; do
-    case "$arg" in
+# === Parse flags and optional arguments ===
+while [[ $# -gt 0 ]]; do
+    case "$1" in
         --field)
             field_flag="--field"
             echo "Extracting both stack variables and field access information."
+            shift
             ;;
         --reason)
             reason_flag="--reason"
-            echo "Extract information for posteior reasoning. Will keep necessary intermediate results for posterior reasoning even if --clean flag is on."
+            echo "Extract information for posterior reasoning. Will keep necessary intermediate results for posterior reasoning even if --clean flag is on."
+            shift
             ;;
         --clean)
             clean_flag="--clean"
             echo "Clean flag is set. Will clean intermediate results after processing."
+            shift
             ;;
         --test)
             test_flag="--test"
-            echo "Test flag is set. Enter testing mode. Will only analyze the decomplied code and will not analyze the (unstripped) binary file."
+            echo "Test flag is set. Enter testing mode. Will only analyze the decompiled code and will not analyze the (unstripped) binary file."
+            shift
+            ;;
+        --max_proc)
+            if [[ -n "$2" && "$2" != --* ]]; then
+                MAX_PROC="$2"
+                echo "Max processes set to $MAX_PROC"
+                shift 2
+            else
+                echo "[ERROR] --max_proc flag requires a numeric argument." >&2
+                exit 1
+            fi
+            ;;
+        *)
+            echo "[ERROR] Unknown argument: $1" >&2
+            exit 1
             ;;
     esac
 done
@@ -47,8 +67,9 @@ fi
 
 # Check for conflict: reason without field
 if [[ -n "$reason_flag" && -z "$field_flag" ]]; then
-    echo "Error: posterior reasoning cannot be proceeded without field access information. Please pass flags --field and --reason together." >&2
-    exit 1
+    echo "[Warning] Posterior reasoning cannot be proceeded without field access information. Overwrite --field to true" >&2
+    field_flag="--field"
+    # exit 1
 fi
 
 
@@ -85,15 +106,13 @@ check_file_exists() {
 
 create_and_clean_dir() {
     target_dir=$1
-    create_dir $target_dir
-    # Check if the directory contains any files before trying to remove them
+    create_dir "$target_dir"
+
     if [ "$(ls -A "$target_dir")" ]; then
-        rm "$target_dir"/*
+        find "$target_dir" -mindepth 1 -delete
         if [ $? -ne 0 ]; then
             echo "Warning: Could not remove some files in '$target_dir'."
         fi
-    # else
-    #     echo "The directory '$target_dir' is empty."
     fi
 }
 

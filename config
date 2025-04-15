@@ -1,26 +1,28 @@
 # ======= Mode Flags =======
-test_mode=true   # no ground truth will be collected
+test_mode=true   # no ground truth will be collected if false
 field=true
 reason=true
 clean=true
 
 # ======= Training Config =======
-TRAIN_ON=false  # false if use existing checkpoints
+TRAIN_ON=true  # false if use existing checkpoints
 EPOCH=3
-BATCH_SIZE=1 #32
+BATCH_SIZE=32
 LR=5e-5
-TRAIN_SPLIT=0.5
-MAX_STEPS=-1 #-1
-model_name="Salesforce/codegen-350M-mono"   # "bigcode/starcoderbase-3b"
-vardecoder_max_token_train=1024   # 4096
-fielddecoder_max_token_train=1024  # 4096
+TRAIN_SPLIT=0.8
+LOG_STEPS=10
+MODEL_NAME="bigcode/starcoderbase-3b"
+BF16=true
+vardecoder_max_token_train=4096
+fielddecoder_max_token_train=4096
 
 # ======= Inference Config =======
-num_beams=1
+num_beams=4
 vardecoder_ckpt="/home/models/vardecoder"
 fielddecoder_ckpt="/home/models/fielddecoder"
-vardecoder_max_token_inf=8192
-fielddecoder_max_token_inf=8192
+vardecoder_max_token_inf=8192  # has to be larger than 1024
+fielddecoder_max_token_inf=8192  # has to be larger than 1024
 
 # ======= Hardware & Access =======
 VISIBLE_GPUS="0,1,2,3"
+MAX_PROC=30

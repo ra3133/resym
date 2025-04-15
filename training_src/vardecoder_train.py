@@ -17,15 +17,21 @@ def count_dataset_samples(file_path):
     return count
 
 
-def train(train_fpath, save_dir, model_name, max_token, lr, epochs, batch_size, max_steps):
+def train(train_fpath, save_dir, model_name, max_token, lr, epochs, batch_size, bf16, log_steps):
     kwargs = DistributedDataParallelKwargs(static_graph=True, find_unused_parameters=True)
     accelerator = Accelerator(kwargs_handlers=[kwargs])
 
     print(f'==========start loading model {model_name} ==========')
     tokenizer = AutoTokenizer.from_pretrained(model_name, use_auth_token=hf_key)
-    model = AutoModelForCausalLM.from_pretrained(
-        model_name, use_auth_token=hf_key, torch_dtype=torch.float16
-    )
+    if bf16:
+        model = AutoModelForCausalLM.from_pretrained(
+            model_name, use_auth_token=hf_key, torch_dtype=torch.bfloat16
+        )
+    else:
+        model = AutoModelForCausalLM.from_pretrained(
+            model_name, use_auth_token=hf_key
+        )
+        
     model.train()
     model.transformer.gradient_checkpointing = True
     model.config.use_cache = False
@@ -48,21 +54,20 @@ def train(train_fpath, save_dir, model_name, max_token, lr, epochs, batch_size, 
         lr_scheduler_type='cosine',
         warmup_steps=500,
         gradient_accumulation_steps=1,
+        num_train_epochs = epochs,
         gradient_checkpointing=True,
         optim='adamw_torch',
         save_strategy='steps',
         save_steps=num_save_step,
         logging_dir='./logs',
         logging_strategy='steps',
-        logging_steps=10,
+        logging_steps=log_steps,
         prediction_loss_only=True,
-        fp16=True,
     )
-    # Conditionally add either max_steps or num_train_epochs
-    if max_steps > 0:
-        trainer_kwargs["max_steps"] = max_steps
+    if bf16:
+        trainer_kwargs['bf16'] = True
     else:
-        trainer_kwargs["num_train_epochs"] = epochs
+        trainer_kwargs['fp16'] = True
 
     trainer_args = TrainingArguments(**trainer_kwargs)
     trainer = Trainer(
@@ -83,10 +88,10 @@ if __name__ == '__main__':
     parser.add_argument('--lr', type=float, default=5e-5, help='Learning rate')
     parser.add_argument('--epoch', type=int, default=1, help='Number of training epochs')
     parser.add_argument('--batch_size', type=int, default=4, help='Per-device batch size')
-    parser.add_argument('--max_steps', type=int, default=-1, help='Max total training steps (overrides epoch if > 0)')
+    parser.add_argument('--bf16', action='store_true', help='Enable bfloat16 training mode')
+    parser.add_argument('--log_steps', type=int, default=10, help='Number of steps for log')
 
     args = parser.parse_args()
-    print(args)
     train(
         train_fpath=args.train_fpath,
         save_dir=args.save_dir,
@@ -95,5 +100,6 @@ if __name__ == '__main__':
         lr=args.lr,
         epochs=args.epoch,
         batch_size=args.batch_size,
-        max_steps=args.max_steps
+        bf16=args.bf16,
+        log_steps=args.log_steps
     )

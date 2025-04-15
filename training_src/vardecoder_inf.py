@@ -9,7 +9,7 @@ hf_key = os.environ['HF_TOKEN']
 
 MAX_OUTPUT_TOKEN=1024
 def inference(test_fpath, out_fpath, model_path, model_name, max_token, num_beams):
-    print(f'==========start loading model {model_name} ==========')
+    print(f'==========start loading VarDecoder {model_name} ==========')
 
     tokenizer = AutoTokenizer.from_pretrained(model_name, use_auth_token=hf_key)
     model = AutoModelForCausalLM.from_pretrained(
@@ -23,8 +23,11 @@ def inference(test_fpath, out_fpath, model_path, model_name, max_token, num_beam
     with open(test_fpath, 'r') as fp:
         for i, line in enumerate(tqdm(fp.readlines())):
             line = json.loads(line)
-            prompt = line['prompt']
-            first_token = line['first_token']
+            try:
+                prompt = line['prompt'] 
+                first_token = line['first_token']
+            except:
+                continue
             start_time = time.time()
 
             with torch.no_grad():
@@ -53,7 +56,7 @@ def inference(test_fpath, out_fpath, model_path, model_name, max_token, num_beam
             wp.write(json.dumps(save_data) + '\n')
 
 
-    print(f"Inference finished. The results can be found in {out_fpath}")
+    print(f"Inference for VarDecoder finished. The results can be found in {out_fpath}")
 
 if __name__=='__main__':
     parser = argparse.ArgumentParser()
@@ -63,7 +66,5 @@ if __name__=='__main__':
     parser.add_argument('--model_name', type=str, default='bigcode/starcoderbase-3b')
     parser.add_argument('--max_token', type=int, default=8192, help='Maximum total context length (input + output)')
     parser.add_argument('--num_beams', type=int, default=1, help='Number of beams for beam search generation')
-
     args = parser.parse_args()
-
     inference(args.test_fpath, args.out_fpath, args.model_path, args.model_name, args.max_token, args.num_beams)

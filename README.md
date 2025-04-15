@@ -24,15 +24,9 @@ This document explains the configuration file used to control the full pipeline 
      -v /absolute/path/to/results/folder:/home/results \
      dnxie/resym:cuda
    ```
-   
-1.2 **Set your hugging face account**
+  
 
-Your Hugging Face access token must be exported as:
-  ```bash
-  export HF_TOKEN=your_token_here
-```
-
-1.3 **Directory Requirements:**
+1.2 **Directory Requirements:**
 
 - `/home/ReSym` – the ReSym source code pulled from github
 - `/home/data` – if using our dataset on [Zenodo](https://zenodo.org/records/13923982) (`ReSym_rawdata`), point to the root of `ReSym_rawdata` or a similar structure (see `./process_data/readme.md` for details and requirements)
@@ -40,6 +34,13 @@ Your Hugging Face access token must be exported as:
 
 Note that if you wish you use existing spliting for training and testing, put this file under `/home/results/training_data/split.json`
 
+
+1.3 **Set your hugging face account**
+
+Your Hugging Face access token must be exported as:
+  ```bash
+  export HF_TOKEN=your_token_here
+```
 
 1.4 **Data**  
 We provide two binary files in the `ReSym/sample_data` folder as an example. Our full dataset from [Zenodo](https://zenodo.org/records/13923982) (`ReSym_rawdata`) is with the same structure. If you wish to prepare data yourself, please make sure your data folder should contain two subfolders:
@@ -98,17 +99,17 @@ The config file (named `./config`) is a simple Bash-style key-value list that is
 
 | Variable                     | Type    | Description                                                                                                 | Default                        |
 |------------------------------|---------|-------------------------------------------------------------------------------------------------------------|--------------------------------|
-| `TRAIN_ON`                   | boolean | If `true`, trains VarDecoder and FieldDecoder (if `field=true`). If `false`, uses existing checkpoints.     | `false`                         |
-| `EPOCH`                      | int     | Number of training epochs. Ignored if `MAX_STEPS > 0`.                                                      | `3`                            |
+| `TRAIN_ON`                   | boolean | If `true`, trains VarDecoder and FieldDecoder (if `field=true`). If `false`, uses existing checkpoints, ignore all the settings in this section.     | `false`                         |
+| `EPOCH`                      | int     | Number of training epochs.                                                     | `3`                            |
 | `BATCH_SIZE`                 | int     | Per-device batch size during training.                                                                      | `32`                            |
 | `LR`                         | float   | Learning rate for both models.                                                                              | `0.001`                        |
 | `TRAIN_SPLIT`                | float   | Proportion of binaries used for training (1 - value = test split). Set to 0 if want to use all data for testing.                                         | `0.5`                          |
-| `MAX_STEPS`                 | int     | Max total training steps. Set to `-1` to disable and fall back to `EPOCH`.                                  | `-1`                            |
-| `model_name`                | string  | HF model ID or path used to initialize the model.                                                           | `"bigcode/starcoderbase-1b"`   |
+| `MODEL_NAME`                | string  | HF model ID or path used to initialize the model. The training scripts is designed for starcoder family. If changed to other models, the scripts may crash.                                                            | `"bigcode/starcoderbase-3b"`   |
 | `vardecoder_max_token_train`| int     | Max input token length for VarDecoder training.                                                             | `4096`                         |
 | `fielddecoder_max_token_train`| int   | Max input token length for FieldDecoder training.                                                           | `4096`                         |
 |
-
+| `LOG_STEPS`                  | int     | Interval (in steps) for logging training progress.                                                          | `10`                           |
+| `BF16`                       | boolean | If `true`, enables bfloat16 (bf16) precision during training. Note that the setting may need to be changed based on the GPU. BF16 (BFloat16) is primarily supported by NVIDIA Ampere and later GPU architectures                                               | `true`                         |
 
 
 #### 3.3 Inference Configuration
@@ -118,8 +119,8 @@ The config file (named `./config`) is a simple Bash-style key-value list that is
 | `num_beams`                 | int     | Number of beams for beam search decoding during inference.                 | `4`                              |
 | `vardecoder_ckpt`           | string  | Path to VarDecoder checkpoint (used only when `TRAIN_ON=false`).           | `"/home/models/vardecoder"`      |
 | `fielddecoder_ckpt`         | string  | Path to FieldDecoder checkpoint (used only when `TRAIN_ON=false`).         | `"/home/models/fielddecoder"`    |
-| `vardecoder_max_token_inf`  | int     | Max input token length for VarDecoder inference.                           | `8192`                           |
-| `fielddecoder_max_token_inf`| int     | Max input token length for FieldDecoder inference.                         | `8192`                           |
+| `vardecoder_max_token_inf`  | int     | Max input token length for VarDecoder inference. Must be larger than 1024.                           | `8192`                           |
+| `fielddecoder_max_token_inf`| int     | Max input token length for FieldDecoder inference. Must be larger than 1024.                         | `8192`                           |
                     
 
 
@@ -131,6 +132,7 @@ The config file (named `./config`) is a simple Bash-style key-value list that is
 | Variable        | Type    | Description                                                         | Default          |
 |------------------|---------|---------------------------------------------------------------------|------------------|
 | `VISIBLE_GPUS`   | string  | Comma-separated GPU indices to expose to the job.                   | `"0,1,2,3"`      |
+| `MAX_PROC`   | int  | Maximum number of processes used when pre-processing data.                   | `20`      |
 
 
 

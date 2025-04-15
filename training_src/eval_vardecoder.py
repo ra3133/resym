@@ -70,8 +70,8 @@ class Cluster_counter():
         self.recall = 0
         self.f1 = 0
     def print(self, ):
-        self.precision = self.num_correctly_pred/self.num_pred
-        self.recall = self.num_correctly_pred/self.num_cluster
+        self.precision = safe_division(self.num_correctly_pred, self.num_pred)
+        self.recall = safe_division(self.num_correctly_pred, self.num_cluster)
         self.f1 = safe_division(2 * (self.precision * self.recall), (self.precision + self.recall))
         print(f'precision: {self.num_correctly_pred}/ {self.num_pred} = {self.precision}')
         print(f'recall: {self.num_correctly_pred}/ {self.num_cluster} = {self.recall}')
